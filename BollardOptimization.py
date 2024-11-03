@@ -1,6 +1,4 @@
-from igraph import Graph, plot
-# import matplotlib.pyplot as plt
-# import matplotlib.image as mpimg
+from igraph import Graph
 import random
 import itertools
 
@@ -32,19 +30,19 @@ class BollardOptimization:
                     graph.add_edge(current, current + self.cols)
         layout = graph.layout("grid")
         # plot(graph, layout=layout, target='grid_graph.png')
-        for i, edge in enumerate(graph.es):
-            # Alternate between 'car' and 'bike'
-            if i % 2 == 0:
-                edge["type"] = "car"
-                edge["speed"] = self.car_speed
-            else:
-                edge["type"] = "bike"
-                edge["speed"] = self.bike_speed
-            edge["travel_time"] = 5 / edge["speed"]
+        self.list_of_vehicles = []
+        for edge in graph.es:
+            vehicle_type = random.choice(["car", "bike"])
+            if vehicle_type == "car":
+                edge["speed"] = 40
+                edge["travel_time"] = 0.125
+            elif vehicle_type == "bike":
+                edge["speed"] = 20
+                edge["travel_time"] = 0.25
+            self.list_of_vehicles.append(vehicle_type)
 
-        # Print edge details for debugging
-        for j, edge in enumerate(graph.es):
-            print(f"Edge {j}: Type = {edge['type']}, Speed = {edge['speed']}, Travel Time = {edge['travel_time']}")
+        print(graph.es["travel_time"])
+        print(self.list_of_vehicles)
 
         return graph
 
@@ -60,8 +58,6 @@ class BollardOptimization:
                 modified_graph.es[i]["speed"] = self.car_speed
             else:
                 modified_graph.es[i]["speed"] = self.bike_speed
-        
-        print(f"Edge {i}: Type = {edge_settings[i]}, Speed = {modified_graph.es[i]['speed']}, Travel Time = {modified_graph.es[i]['distance'] / modified_graph.es[i]['speed']}")
 
         return modified_graph
 
@@ -76,13 +72,11 @@ class BollardOptimization:
         original_graph_cost = 0
         for edge in original_path:
             original_graph_cost += (self.graph.es[edge]["travel_time"])
-        print(f"Original Path: {original_path}, Cost: {original_graph_cost}")
 
-        modified_path = modified_graph.get_shortest_path(source, to = destination,  weights =modified_graph.es["travel_time"], output = "epath")
+        modified_path = modified_graph.get_shortest_path(source, to = destination,  weights = modified_graph.es["travel_time"], output = "epath")
         modified_graph_cost = 0 
         for edge in modified_path:
             modified_graph_cost += (modified_graph.es[edge]["travel_time"])
-        print(f"Modified Path: {modified_path}, Cost: {modified_graph_cost}")
 
         return modified_graph_cost/original_graph_cost
     
@@ -98,9 +92,14 @@ class BollardOptimization:
         list_of_settings = itertools.product(["car", "bike"], repeat = len(self.graph.es))
 
         for setting in list_of_settings:
-            modified_graph = self.getModifiedGraph(setting)
-            dilation = self.dilation(modified_graph, source, destination)
-            optimized_dilation = min(optimized_dilation, dilation)
-            optimized_setting = setting
+            if setting == self.list_of_vehicles: continue
+            else:
+                modified_graph = self.getModifiedGraph(setting)
+                dilation = self.dilation(modified_graph, source, destination)
+                if dilation < optimized_dilation:
+                    optimized_dilation = dilation
+                    optimized_setting = setting
 
+        print(optimized_dilation)
+        print(optimized_setting)
         return optimized_dilation, optimized_setting
