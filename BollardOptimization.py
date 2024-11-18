@@ -41,27 +41,28 @@ class BollardOptimization:
                 edge["travel_time"] = 0.25
             self.list_of_vehicles.append(vehicle_type)
 
-        print(graph.es["travel_time"])
         print(self.list_of_vehicles)
 
         return graph
 
 
-    def getModifiedGraph(self, edge_settings):
+    def getModifiedGraph(self, edge_settings): # need another graph for bike 
         """
         Create a modified graph based on edge settings
         edge_settings: A list indicating the speed setting for each edge ('car' or 'bike').
         """
         modified_graph = self.graph.copy()
+
         for i in range(len(self.graph.es)):
             if edge_settings[i] == "car":
                 modified_graph.es[i]["speed"] = self.car_speed
+                modified_graph.es[i]["travel_time"] = 0.125
             else:
                 modified_graph.es[i]["speed"] = self.bike_speed
-
+                modified_graph.es[i]["travel_time"] = 0.25
         return modified_graph
 
-    def dilation(self, modified_graph, source, destination):
+    def dilation(self, modified_graph_car, source, destination):
         """
         Calculate dilation using the original and modified graphs.
         Calculate the sum of time needed for both graphs (time = path length/speed)
@@ -69,37 +70,47 @@ class BollardOptimization:
         """
         # return a list of edges that sum of time travel is lowest
         original_path = self.graph.get_shortest_path(source, to = destination, weights = self.graph.es["travel_time"], output = "epath")
-        original_graph_cost = 0
-        for edge in original_path:
-            original_graph_cost += (self.graph.es[edge]["travel_time"])
+        original_graph_cost = sum(self.graph.es[edge]["travel_time"] for edge in original_path)
 
-        modified_path = modified_graph.get_shortest_path(source, to = destination,  weights = modified_graph.es["travel_time"], output = "epath")
-        modified_graph_cost = 0 
-        for edge in modified_path:
-            modified_graph_cost += (modified_graph.es[edge]["travel_time"])
+        modified_path = modified_graph_car.get_shortest_path(source, to=destination, weights=modified_graph_car.es["travel_time"], output="epath")
+        modified_cost = sum(modified_graph_car.es[edge]["travel_time"] for edge in modified_path)
+        dilation = modified_cost/original_graph_cost
 
-        return modified_graph_cost/original_graph_cost
+        return [dilation, modified_path]
     
+    # def bike_dilation(self, modified_graph_bike, source, destination):
+    #     original_path = self.graph.get_shortest_path(source, to = destination, weights = self.graph.es["travel_time"], output = "epath")
+    #     original_graph_cost = sum(self.graph.es[edge]["travel_time"] for edge in original_path)
+
+    #     bike_path = modified_graph_bike.get_shortest_path(source, to=destination, weights=modified_graph_bike.es["travel_time"], output="epath")
+    #     bike_cost = sum(modified_graph_bike.es[edge]["travel_time"] for edge in bike_path)
+    #     bike_dilation = bike_cost/original_graph_cost
+
+    #     return bike_dilation
+
     def bruteForce(self, source, destination):
-        """
-        This function tries all possibilities of setting and find the one that has lowest dilation
-        """
-        optimized_dilation = float('inf') # set to a random max float number
-        optimized_setting = []
+        car_optimized_dilation = float('inf')
+        bike_optimized_dilation = float('inf')
+        car_optimized_setting = None
+        bike_optimized_setting = None
+
+        bike_setting = ["bike"] * len(self.graph.es)
+
+        modified_graph = self.getModifiedGraph(bike_setting)
+        [bike_optimized_dilation, bike_optimized_setting]  = self.dilation(modified_graph, source, destination)
+
+
+        car_setting = ["car"] * len(self.graph.es)
+        for edge in bike_optimized_setting:
+            car_setting[edge] = "bike"
+        modified_graph = self.getModifiedGraph(car_setting)
+        [car_optimized_dilation, car_optimized_setting]  = self.dilation(modified_graph, source, destination)
+
+        print("\nBike Optimized Dilation:", bike_optimized_dilation)
+        print("Bike Optimized Setting:", bike_optimized_setting)
+        print("Car Optimized Dilation:", car_optimized_dilation)
+        print("Car Optimized Setting:", car_optimized_setting)
+
+        return [bike_optimized_dilation, bike_optimized_setting, car_optimized_dilation, car_optimized_setting]
+
         
-        #Create a list of list of random settings from each edge
-        #Each edge will randomly be assigned as either 'car' or 'bike'
-        list_of_settings = itertools.product(["car", "bike"], repeat = len(self.graph.es))
-
-        for setting in list_of_settings:
-            if setting == self.list_of_vehicles: continue
-            else:
-                modified_graph = self.getModifiedGraph(setting)
-                dilation = self.dilation(modified_graph, source, destination)
-                if dilation < optimized_dilation:
-                    optimized_dilation = dilation
-                    optimized_setting = setting
-
-        print(optimized_dilation)
-        print(optimized_setting)
-        return optimized_dilation, optimized_setting
