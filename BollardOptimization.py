@@ -35,8 +35,10 @@ class BollardOptimization:
             if vehicle_type == "car":
                 edge["speed"]       = self.car_speed
                 edge["car_time"]    = 1 / self.car_speed
+                edge["bike_time"]   = 1 / self.bike_speed
             elif vehicle_type == "bike":
                 edge["speed"]       = self.bike_speed
+                edge["car_time"]    = 1 / self.bike_speed
                 edge["bike_time"]   = 1 / self.bike_speed
             self.list_of_vehicles.append(vehicle_type)
 
@@ -86,14 +88,14 @@ class BollardOptimization:
             weight_key  = "bike_time"
 
         # return a list of edges that sum of time travel is lowest
-        original_path = self.graph.get_shortest_paths(source, to = destination, weights = weight_key, output = "epath")
+        original_path = self.graph.get_shortest_paths(source, to = destination, weights = weight_key, output = "epath")[0]
         original_graph_cost = self.calculatePathCost(self.graph, original_path, weight_key)
 
-        modified_path = modified_graph.get_shortest_paths(source, to=destination, weights = weight_key, output="epath")
+        modified_path = modified_graph.get_shortest_paths(source, to = destination, weights = weight_key, output="epath")[0]
         modified_cost = self.calculatePathCost(modified_graph, modified_path, weight_key)
         dilation = modified_cost/original_graph_cost
 
-        return [dilation, modified_path]
+        return dilation
     
 
     def bruteForce(self, source, destination):
