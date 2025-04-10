@@ -1,4 +1,6 @@
 from igraph import Graph
+import osmnx as ox
+import networkx as nx
 import random
 import itertools
 
@@ -9,43 +11,38 @@ to retrieve their velocity: graph.es[edge][]
 """
 
 class BollardOptimization:
-    def __init__(self, rows, cols, car_speed, bike_speed):
-        self.rows = rows
-        self.cols = cols
+    def __init__(self, car_speed, bike_speed):
         self.car_speed = car_speed
         self.bike_speed = bike_speed
-        self.graph = self.createGraph()
-
-    def createGraph(self):
-        # create a graph with rows*cols vertices
-        graph = Graph(n = self.rows * self.cols)
-        for row in range(self.rows):
-            for col in range(self.cols):
-                current = row * self.cols + col
-                # Connect to the right neighbor if it exists
-                if col < self.cols - 1:
-                    graph.add_edge(current, current + 1)
-                # Connect to the bottom neighbor if it exists
-                if row < self.rows - 1:
-                    graph.add_edge(current, current + self.cols)
-
         self.list_of_vehicles = []
-        for edge in graph.es:
+        self.graph = self.osmtoIgraph()
+
+    def retrieveFromOSM(self):
+        graph_networkx_bike = ox.graph.graph_from_bbox((-117.935413, 33.881272, -117.932688, 33.879985), network_type= "bike")
+        graph_networkx_car = ox.graph.graph_from_bbox((-117.935413, 33.881272, -117.932688, 33.879985), network_type= "drive")
+        graph_networkx = nx.compose(graph_networkx_bike, graph_networkx_car)
+        return graph_networkx
+    
+    def osmtoIgraph(self):
+        graph_networkx = self.retrieveFromOSM()
+        igraph         = Graph.from_networkx(graph_networkx)
+        
+        for index, nodeID in enumerate(graph_networkx.nodes()):
+            igraph.vs[index]["osm_ID"] = nodeID
+        
+        for edge in igraph.es:
             vehicle_type = random.choice(["car", "bike"])
             if vehicle_type == "car":
                 edge["speed"]       = self.car_speed
-                edge["car_time"]    = 1 / self.car_speed
-                edge["bike_time"]   = 1 / self.bike_speed
+                edge["car_time"]    = edge['length'] / self.car_speed
+                edge["bike_time"]   = edge['length'] / self.bike_speed
             elif vehicle_type == "bike":
                 edge["speed"]       = self.bike_speed
-                edge["car_time"]    = 1 / self.bike_speed
-                edge["bike_time"]   = 1 / self.bike_speed
+                edge["car_time"]    = edge['length'] / self.bike_speed
+                edge["bike_time"]   = edge['length'] / self.bike_speed
             self.list_of_vehicles.append(vehicle_type)
-
-        print(self.list_of_vehicles)
-
-        return graph
-
+        
+        return igraph
 
     def getModifiedGraph(self, edge_settings):
         """
@@ -88,6 +85,7 @@ class BollardOptimization:
             weight_key  = "bike_time"
 
         # return a list of edges that sum of time travel is lowest
+
         original_path = self.graph.get_shortest_paths(source, to = destination, weights = weight_key, output = "epath")[0]
         original_graph_cost = self.calculatePathCost(self.graph, original_path, weight_key)
 
