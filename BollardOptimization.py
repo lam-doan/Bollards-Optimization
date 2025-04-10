@@ -52,13 +52,16 @@ class BollardOptimization:
         modified_graph = self.graph.copy()
 
         for i in range(len(self.graph.es)):
-            modified_graph.es[i]["speed"] *= random.uniform(0.9, 1.1)  # Adjust the car speed by ±10%
+            length = self.graph.es[i]["length"]
+
             if edge_settings[i] == "car":
-                # Recalculate car travel time based on the new speed
-                modified_graph.es[i]["car_time"] = 1 / modified_graph.es[i]["speed"]
+                new_speed = self.car_speed * random.uniform(0.9, 1.1)
             else:
-                # Recalculate car travel time based on the new speed
-                modified_graph.es[i]["car_time"] = 1 / modified_graph.es[i]["speed"]
+                new_speed = self.bike_speed * random.uniform(0.9, 1.1)
+
+            modified_graph.es[i]["speed"] = new_speed
+            modified_graph.es[i]["car_time"] = length / new_speed
+            modified_graph.es[i]["bike_time"] = length / new_speed
         return modified_graph
     
     def calculatePathCost(self, graph, path, weight_key):
