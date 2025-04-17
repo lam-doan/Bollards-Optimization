@@ -1,3 +1,4 @@
+from igraph import plot
 from igraph import Graph
 import osmnx as ox
 import networkx as nx
@@ -14,7 +15,6 @@ class BollardOptimization:
     def __init__(self, car_speed, bike_speed):
         self.car_speed = car_speed
         self.bike_speed = bike_speed
-        self.list_of_vehicles = []
         self.graph = self.osmtoIgraph()
 
     def retrieveFromOSM(self):
@@ -31,90 +31,86 @@ class BollardOptimization:
             igraph.vs[index]["osm_ID"] = nodeID
         
         for edge in igraph.es:
-            vehicle_type = random.choice(["car", "bike"])
-            if vehicle_type == "car":
-                edge["speed"]       = self.car_speed
-                edge["car_time"]    = edge['length'] / self.car_speed
-                edge["bike_time"]   = edge['length'] / self.bike_speed
-            elif vehicle_type == "bike":
-                edge["speed"]       = self.bike_speed
-                edge["car_time"]    = edge['length'] / self.bike_speed
-                edge["bike_time"]   = edge['length'] / self.bike_speed
-            self.list_of_vehicles.append(vehicle_type)
-        
+            edge["car_speed"]       = self.car_speed
+            edge["bike_speed"]      = self.bike_speed
+            edge["car_time"]        = edge["length"]/self.car_speed
+            edge["bike_time"]       = edge["length"]/self.bike_speed
+
+        self.plot_graph_simple(igraph)
         return igraph
 
-    def getModifiedGraph(self, edge_settings):
-        """
-        Create a modified graph based on edge settings
-        edge_settings: A list indicating the speed setting for each edge ('car' or 'bike').
-        """
-        modified_graph = self.graph.copy()
+    def plot_graph_simple(self, graph, filename="graph.png"):
+        for edge in graph.es:
+            edge["label"] = f"{edge.index}, {round(edge['car_time'], 2)}s"
 
-        for i in range(len(self.graph.es)):
-            length = self.graph.es[i]["length"]
+        layout = graph.layout("grid")
 
-            if edge_settings[i] == "car":
-                new_speed = self.car_speed * random.uniform(0.9, 1.1)
-            else:
-                new_speed = self.bike_speed * random.uniform(0.9, 1.1)
+        plot(
+            graph,
+            layout=layout,
+            target=filename,
+            vertex_label=graph.vs["osm_ID"],
+            edge_label=graph.es["label"],
+            vertex_size=10,
+            edge_arrow_size=0.5,
+            bbox=(1000, 1000),
+            margin=50
+        )
+        print(f"Graph saved to {filename}")
 
-            modified_graph.es[i]["speed"] = new_speed
-            modified_graph.es[i]["car_time"] = length / new_speed
-            modified_graph.es[i]["bike_time"] = length / new_speed
-        return modified_graph
-    
-    def calculatePathCost(self, graph, path, weight_key):
-        """
-        Calculate the total cost (time) of a path based on the weight key.
-        """
+
+    def calculatePathCost(self, graph, path):
         cost = 0
         for edge in path:
-            cost += graph.es[edge][weight_key]
+            cost += graph.es[edge]["car_time"]
         return cost
     
 
-    def dilation(self, modified_graph, source, destination, mode):
-        """
-        Calculate dilation using the original and modified graphs for a given mode
+    def dilation(self, source, destination, slowed_edges, original_graph_cost):
+        modified_graph = self.graph.copy()
+        for i in range(len(modified_graph.es)):
+            if i in slowed_edges:
+                modified_graph.es[i]["car_speed"] = self.bike_speed
+                modified_graph.es[i]["car_time"]  = self.graph.es[i]["bike_time"]
 
-        Calculate the sum of time needed for both graphs (time = path length/speed)
-        Dilation = time(modified)/time(original)
-        """
-
-        if mode == "car":
-            weight_key  = "car_time"
-        else:
-            weight_key  = "bike_time"
-
-        # return a list of edges that sum of time travel is lowest
-
-        original_path = self.graph.get_shortest_paths(source, to = destination, weights = weight_key, output = "epath")[0]
-        original_graph_cost = self.calculatePathCost(self.graph, original_path, weight_key)
-
-        modified_path = modified_graph.get_shortest_paths(source, to = destination, weights = weight_key, output="epath")[0]
-        modified_cost = self.calculatePathCost(modified_graph, modified_path, weight_key)
+        modified_path = modified_graph.get_shortest_paths(source, to = destination, weights = "car_time", output="epath")[0]
+        modified_cost = self.calculatePathCost(modified_graph, modified_path)
         dilation = modified_cost/original_graph_cost
 
-        return dilation
+        return dilation, modified_path
     
 
-    def bruteForce(self, source, destination):
-        edge_count = len(self.graph.es)
-        best_max_dilation = float('inf')
-        best_setting = None
+    def searchOptimization(self, source, destination, max_bollards):
+        print("Original Path (before any bollards):")
+        for edge_index in range(len(self.graph.es)):
+            edge = self.graph.es[edge_index]
+            edge_car_time = edge["car_time"]
+            print(f"Edge Index: {edge_index}, Car Time: {edge_car_time}")
 
-        for edge_settings in itertools.product(["car", "bike"], repeat=edge_count):
-            modified_graph = self.getModifiedGraph(edge_settings)
-            
-            car_dilation = self.dilation(modified_graph, source, destination, "car")
-            bike_dilation = self.dilation(modified_graph, source, destination, "bike")
-            
-            max_dilation = max(car_dilation, bike_dilation)
-            if max_dilation < best_max_dilation:
-                best_max_dilation = max_dilation
-                best_setting = edge_settings
+        original_path = self.graph.get_shortest_paths(source, to = destination, weights = "car_time", output = "epath")[0]
+        print("Original Shortest Path (Edge Indices):")
+        for edge_index in original_path:
+            edge = self.graph.es[edge_index]
+            edge_car_time = edge["car_time"]
+            print(f"Edge Index: {edge_index}, Car Time: {round(edge_car_time, 2)}s")
 
-        print("Best Maximum Dilation:", best_max_dilation)
-        print("Best Edge Settings:", best_setting)
-        return best_max_dilation, best_setting
+        original_graph_cost = self.calculatePathCost(self.graph, original_path)
+
+        best_dilation           = float("inf")
+        best_edges_to_slow      = None
+        best_modified_path           = None
+        edge_indices            = range(len(self.graph.es))
+        for num_of_bollards in range(1, max_bollards + 1):
+            combinations = itertools.combinations(edge_indices, num_of_bollards)
+            for combination in combinations:
+                    trial_dilation, modified_path = self.dilation(source, destination, combination, original_graph_cost)
+                    #print(combination, trial_dilation, modified_path)
+                    if trial_dilation < best_dilation:
+                        best_modified_path  = modified_path
+                        best_dilation       = trial_dilation
+                        best_edges_to_slow  = combination
+
+        print("Best Modified Path:", best_modified_path)
+        print("Best Maximum Dilation (Greedy):", best_dilation)
+        print("Bollards placed on edges:", best_edges_to_slow)
+        return best_dilation, best_edges_to_slow
