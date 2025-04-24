@@ -18,8 +18,8 @@ class BollardOptimization:
         self.graph = self.osmtoIgraph()
 
     def retrieveFromOSM(self):
-        graph_networkx_bike = ox.graph.graph_from_bbox((-117.935413, 33.881272, -117.932688, 33.879985), network_type= "bike")
-        graph_networkx_car = ox.graph.graph_from_bbox((-117.935413, 33.881272, -117.932688, 33.879985), network_type= "drive")
+        graph_networkx_bike = ox.graph.graph_from_bbox((-117.937085, 33.882191, -117.931817, 33.879252), network_type= "bike")
+        graph_networkx_car = ox.graph.graph_from_bbox((-117.937085, 33.882191, -117.931817, 33.879252), network_type= "drive")
         graph_networkx = nx.compose(graph_networkx_bike, graph_networkx_car)
         return graph_networkx
     
@@ -53,18 +53,15 @@ class BollardOptimization:
             edge_label=graph.es["label"],
             vertex_size=10,
             edge_arrow_size=0.5,
-            bbox=(1000, 1000),
+            bbox=(600, 600),
             margin=50
         )
         print(f"Graph saved to {filename}")
 
 
     def calculatePathCost(self, graph, path):
-        cost = 0
-        for edge in path:
-            cost += graph.es[edge]["car_time"]
-        return cost
-    
+        cost = sum(graph.es[edge]["car_time"] for edge in path)
+        return cost  
 
     def dilation(self, source, destination, slowed_edges, original_graph_cost):
         modified_graph = self.graph.copy()
@@ -79,38 +76,50 @@ class BollardOptimization:
 
         return dilation, modified_path
     
-
-    def searchOptimization(self, source, destination, max_bollards):
+    def searchOptimization(self, source, destination, max_bollards):    
+        """
         print("Original Path (before any bollards):")
         for edge_index in range(len(self.graph.es)):
             edge = self.graph.es[edge_index]
             edge_car_time = edge["car_time"]
-            print(f"Edge Index: {edge_index}, Car Time: {edge_car_time}")
-
-        original_path = self.graph.get_shortest_paths(source, to = destination, weights = "car_time", output = "epath")[0]
-        print("Original Shortest Path (Edge Indices):")
-        for edge_index in original_path:
-            edge = self.graph.es[edge_index]
-            edge_car_time = edge["car_time"]
             print(f"Edge Index: {edge_index}, Car Time: {round(edge_car_time, 2)}s")
+        """
+        
+        # find the shortest path for bike
+        best_car_path_before_bollards = self.graph.get_shortest_paths(source, to = destination, weights = "car_time", output = "epath")[0]
+        best_car_cost_before_bollards = self.calculatePathCost(self.graph, best_car_path_before_bollards)
 
-        original_graph_cost = self.calculatePathCost(self.graph, original_path)
+        # find the shortest path for cyclist (A)
+        bike_shortest_path = self.graph.get_shortest_paths(source, to = destination, weights = "bike_time", output="epath")[0]
+        bike_shortest_path_time = sum(self.graph.es[edge]["bike_time"] for edge in bike_shortest_path)
 
-        best_dilation           = float("inf")
-        best_edges_to_slow      = None
-        best_modified_path           = None
-        edge_indices            = range(len(self.graph.es))
+        best_dilation                     = float("inf")
+        edges_put_bollards                = None
+        best_car_path_after_bollards      = None
+        list_of_index_of_edges            = range(len(self.graph.es))
+        all_possible_paths = []
+
         for num_of_bollards in range(1, max_bollards + 1):
-            combinations = itertools.combinations(edge_indices, num_of_bollards)
+            combinations = itertools.combinations(list_of_index_of_edges, num_of_bollards)
+            # make sure bike_shortest_path is subset of possible combination
             for combination in combinations:
-                    trial_dilation, modified_path = self.dilation(source, destination, combination, original_graph_cost)
-                    #print(combination, trial_dilation, modified_path)
-                    if trial_dilation < best_dilation:
-                        best_modified_path  = modified_path
-                        best_dilation       = trial_dilation
-                        best_edges_to_slow  = combination
+                if (set(bike_shortest_path)).issubset(set(combination)):
+                    all_possible_paths.append(combination)
+        
+        for path in all_possible_paths:
+            curr_dilation, modified_path = self.dilation(source, destination, path, best_car_cost_before_bollards)
+            if curr_dilation < best_dilation:
+                best_car_path_after_bollards  = modified_path
+                best_dilation                 = curr_dilation
+                edges_put_bollards            = path
 
-        print("Best Modified Path:", best_modified_path)
-        print("Best Maximum Dilation (Greedy):", best_dilation)
-        print("Bollards placed on edges:", best_edges_to_slow)
-        return best_dilation, best_edges_to_slow
+        print("Best Path for Bike:", bike_shortest_path)
+        print("Best Time Path for Bike:", round(bike_shortest_path_time, 2), "s")
+        print()
+        print("[Before Bollards] Best Path for Car:", best_car_path_before_bollards)
+        print("[Before Bollards] Best Time Path for Car:", round(best_car_cost_before_bollards, 2), "s")
+        print("Bollards placed on edges:", edges_put_bollards)
+        print("[After Bollards] Best Path for Car:", best_car_path_after_bollards)
+        print("Best Minimum Dilation:", best_dilation)
+
+        return edges_put_bollards, best_car_path_after_bollards, best_dilation
