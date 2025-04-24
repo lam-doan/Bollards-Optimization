@@ -18,8 +18,8 @@ class BollardOptimization:
         self.graph = self.osmtoIgraph()
 
     def retrieveFromOSM(self):
-        graph_networkx_bike = ox.graph.graph_from_bbox((-117.937085, 33.882191, -117.931817, 33.879252), network_type= "bike")
-        graph_networkx_car = ox.graph.graph_from_bbox((-117.937085, 33.882191, -117.931817, 33.879252), network_type= "drive")
+        graph_networkx_bike = ox.graph.graph_from_bbox((-117.938093, 33.883393, -117.928533, 33.877035), network_type= "bike")
+        graph_networkx_car = ox.graph.graph_from_bbox((-117.938093, 33.883393, -117.928533, 33.877035), network_type= "drive")
         graph_networkx = nx.compose(graph_networkx_bike, graph_networkx_car)
         return graph_networkx
     
@@ -37,6 +37,7 @@ class BollardOptimization:
             edge["bike_time"]       = edge["length"]/self.bike_speed
 
         self.plot_graph_simple(igraph)
+        print("Number of vertices", len(igraph.vs))
         return igraph
 
     def plot_graph_simple(self, graph, filename="graph.png"):
@@ -76,7 +77,7 @@ class BollardOptimization:
 
         return dilation, modified_path
     
-    def searchOptimization(self, source, destination, max_bollards):    
+    def searchOptimization(self, source, destination):    
         """
         print("Original Path (before any bollards):")
         for edge_index in range(len(self.graph.es)):
@@ -99,12 +100,12 @@ class BollardOptimization:
         list_of_index_of_edges            = range(len(self.graph.es))
         all_possible_paths = []
 
-        for num_of_bollards in range(1, max_bollards + 1):
-            combinations = itertools.combinations(list_of_index_of_edges, num_of_bollards)
-            # make sure bike_shortest_path is subset of possible combination
-            for combination in combinations:
-                if (set(bike_shortest_path)).issubset(set(combination)):
-                    all_possible_paths.append(combination)
+        number_of_bollards = len(bike_shortest_path)
+        combinations = itertools.combinations(list_of_index_of_edges, number_of_bollards)
+        # make sure bike_shortest_path is subset of possible combination
+        for combination in combinations:
+            if (set(bike_shortest_path)).issubset(set(combination)):
+                all_possible_paths.append(combination)
         
         for path in all_possible_paths:
             curr_dilation, modified_path = self.dilation(source, destination, path, best_car_cost_before_bollards)

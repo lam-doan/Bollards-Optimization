@@ -19,4 +19,4 @@ for index, node in enumerate(my_graph.vs):
 if source_index is None or destination_index is None:
     raise ValueError("Source or Destination node not found in the graph.")
 
-res = bo.searchOptimization(source_index, destination_index, 5)
+res = bo.searchOptimization(source_index, destination_index)
